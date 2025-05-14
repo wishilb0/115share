@@ -47,8 +47,9 @@ def mark_share_received(share_code, receive_code, txt_file, cid):
     )
     conn.commit()
 
-# 配置：更新正则表达式以匹配所有可能的链接格式
-link_pattern = re.compile(r'https://(115cdn\.com|anxia\.com|115\.com)/s/(\w+)\?password=(\w+)(?:#.*)?')
+# 更稳健的正则：分别提取链接和提取码
+link_re = re.compile(r'https?://(?:115cdn\.com|anxia\.com|115\.com)/s/(\w+)', re.IGNORECASE)
+code_re = re.compile(r'提取码[:：]?\s*(\w{4})', re.IGNORECASE)
 
 txt_directory_path = "./links"
 txt_files = [f for f in os.listdir(txt_directory_path) if f.endswith('.txt')]
@@ -70,16 +71,19 @@ for txt_file in txt_files:
 
     for line in lines:
         print(f"🧪 扫描行：{line.strip()}")
-        match = link_pattern.search(line)
-        if not match:
+
+        link_match = link_re.search(line)
+        code_match = code_re.search(line)
+
+        if not link_match:
             continue
 
-        old_link = match.group(1)  # 获取旧链接
-        share_code = match.group(2)
-        receive_code = match.group(3)
+        share_code = link_match.group(1)
+        receive_code = code_match.group(1) if code_match else None
 
-        # 替换旧链接为新链接
-        new_link = old_link.replace('115.com', '115cdn.com').replace('anxia.com', '115cdn.com')
+        if not receive_code:
+            print(f"⚠️ 找不到提取码，跳过分享：{share_code}")
+            continue
 
         if is_share_received(share_code):
             print(f"🔁 已转存过的分享：{share_code}，跳过")
@@ -93,7 +97,7 @@ for txt_file in txt_files:
                 "cid": target_cid
             }
 
-            # 将新的链接传给客户端进行转存
+            # 调用 API 执行转存
             response = client.share_receive(payload)
             if response.get('state', False):
                 print(f"✅ 成功转存分享：{share_code}")
